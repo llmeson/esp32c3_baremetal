@@ -1,0 +1,14 @@
+# Archivos objeto
+*.o
+*.obj
+
+# Directorio de compilación (esto es lo más efectivo)
+build/
+*/build/
+
+# Archivos binarios y ejecutables (por seguridad)
+*.bin
+*.elf
+*.hex
+*.dis
+*.map
