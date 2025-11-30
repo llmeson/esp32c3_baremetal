@@ -1,284 +1,202 @@
 #include <stdint.h>
 #include "WDT_FEED.h"
 
-#define BIT(n) (1U << (n))                    // Máscara de un bit
-#define REG32(addr) (*(volatile uint32_t *)(addr)) // Acceso directo a registro de 32 bits
+/* --- 1. DEFINICIÓN DE REGISTROS --- */
+#define BIT(n) (1U << (n))
+#define REG32(addr) (*(volatile uint32_t *)(addr))
 
-#define DR_REG_GPIO_BASE        0x60004000UL  // Base periférico GPIO
-#define DR_REG_IO_MUX_BASE      0x60009000UL  // Base IO_MUX (selección de función/pulls)
-#define DR_REG_SYSTEM_BASE      0x600C0000UL  // Base registro de sistema (clocks/resets)
-#define DR_REG_APB_SARADC_BASE  0x60040000UL  // Base ADC SAR digital
-#define DR_REG_LEDC_BASE        0x60019000UL  // Base bloque LEDC (PWM hardware)
+#define DR_REG_GPIO_BASE        0x60004000UL
+#define DR_REG_IO_MUX_BASE      0x60009000UL
+#define DR_REG_SYSTEM_BASE      0x600C0000UL
+#define DR_REG_APB_SARADC_BASE  0x60040000UL
 
-#define GPIO_OUT_W1TS_REG   (DR_REG_GPIO_BASE + 0x0008)  // Set pin high (write-1-to-set)
-#define GPIO_OUT_W1TC_REG   (DR_REG_GPIO_BASE + 0x000C)  // Set pin low  (write-1-to-clear)
-#define GPIO_ENABLE_W1TS_REG (DR_REG_GPIO_BASE + 0x0024) // Habilitar OE
-#define GPIO_ENABLE_W1TC_REG (DR_REG_GPIO_BASE + 0x0028) // Deshabilitar OE
+// GPIO
+#define GPIO_OUT_W1TS_REG       (DR_REG_GPIO_BASE + 0x0008)
+#define GPIO_OUT_W1TC_REG       (DR_REG_GPIO_BASE + 0x000C)
+#define GPIO_ENABLE_W1TS_REG    (DR_REG_GPIO_BASE + 0x0024)
+#define GPIO_ENABLE_W1TC_REG    (DR_REG_GPIO_BASE + 0x0028)
 
-#define IO_MUX_GPIO0_REG    (DR_REG_IO_MUX_BASE + 0x0004) // IO_MUX para GPIO0 (ADC)
-#define IO_MUX_GPIO3_REG    (DR_REG_IO_MUX_BASE + 0x0010) // IO_MUX para GPIO3 (LED)
-#define IO_MUX_FUN_IE       BIT(9)   // Input enable digital
-#define IO_MUX_FUN_PU       BIT(8)   // Pull-up digital
-#define IO_MUX_FUN_PD       BIT(7)   // Pull-down digital
-#define IO_MUX_MCU_SEL_MASK (0x7U << 12) // Selector de función
-#define IO_MUX_MCU_SEL_GPIO 1U       // Función GPIO
+// IO MUX
+#define IO_MUX_GPIO0_REG        (DR_REG_IO_MUX_BASE + 0x0004)
+#define IO_MUX_GPIO3_REG        (DR_REG_IO_MUX_BASE + 0x0010)
+#define IO_MUX_GPIO4_REG        (DR_REG_IO_MUX_BASE + 0x0014)
+#define IO_MUX_GPIO5_REG        (DR_REG_IO_MUX_BASE + 0x0018)
+#define IO_MUX_GPIO6_REG        (DR_REG_IO_MUX_BASE + 0x001C)
+#define IO_MUX_GPIO7_REG        (DR_REG_IO_MUX_BASE + 0x0020)
 
-#define SYSTEM_PERIP_CLK_EN0_REG (DR_REG_SYSTEM_BASE + 0x0010) // Registro de clocks
-#define SYSTEM_PERIP_RST_EN0_REG (DR_REG_SYSTEM_BASE + 0x0018) // Registro de resets
-#define SYSTEM_APB_SARADC_CLK_EN BIT(28) // Bit de clock para ADC SAR
-#define SYSTEM_APB_SARADC_RST    BIT(28) // Bit de reset para ADC SAR
-#define SYSTEM_LEDC_CLK_EN       BIT(11) // Bit de clock para LEDC
-#define SYSTEM_LEDC_RST          BIT(11) // Bit de reset para LEDC
+// SYSTEM
+#define SYSTEM_PERIP_CLK_EN0_REG (DR_REG_SYSTEM_BASE + 0x0010)
+#define SYSTEM_PERIP_RST_EN0_REG (DR_REG_SYSTEM_BASE + 0x0018)
+#define SYSTEM_APB_SARADC_CLK_EN BIT(28)
+#define SYSTEM_APB_SARADC_RST    BIT(28)
 
-#define APB_SARADC_CTRL_REG            (DR_REG_APB_SARADC_BASE + 0x0000) // Control general ADC
-#define APB_SARADC_START_FORCE         BIT(0)  // Forzar arranque digital
-#define APB_SARADC_START               BIT(1)  // Señal start SW
-#define APB_SARADC_SAR_CLK_GATED       BIT(6)  // Clock gated para SAR
-#define APB_SARADC_SAR_CLK_DIV_S       7       // Shift divisor clock
-#define APB_SARADC_SAR_CLK_DIV_M       (0xFFU << APB_SARADC_SAR_CLK_DIV_S)
-#define APB_SARADC_XPD_SAR_FORCE_S     27      // Shift modo power
-#define APB_SARADC_XPD_SAR_FORCE_M     (0x3U << APB_SARADC_XPD_SAR_FORCE_S)
+// ADC
+#define APB_SARADC_CTRL_REG            (DR_REG_APB_SARADC_BASE + 0x0000)
+#define APB_SARADC_ONETIME_SAMPLE_REG  (DR_REG_APB_SARADC_BASE + 0x0020)
+#define APB_SARADC_1_DATA_STATUS_REG   (DR_REG_APB_SARADC_BASE + 0x002C)
+#define APB_SARADC_INT_ENA_REG         (DR_REG_APB_SARADC_BASE + 0x0040)
+#define APB_SARADC_INT_CLR_REG         (DR_REG_APB_SARADC_BASE + 0x004C)
+#define APB_SARADC_INT_ST_REG          (DR_REG_APB_SARADC_BASE + 0x0048)
 
-#define APB_SARADC_ONETIME_SAMPLE_REG  (DR_REG_APB_SARADC_BASE + 0x0020) // Control oneshot
-#define APB_SARADC1_ONETIME_SAMPLE     BIT(31) // Selecciona ADC1
-#define APB_SARADC_ONETIME_START       BIT(29) // Lanzar conversión
-#define APB_SARADC_ONETIME_CHANNEL_S   25      // Shift canal
-#define APB_SARADC_ONETIME_CHANNEL_M   (0xFU << APB_SARADC_ONETIME_CHANNEL_S)
-#define APB_SARADC_ONETIME_ATTEN_S     23      // Shift atenuación
-#define APB_SARADC_ONETIME_ATTEN_M     (0x3U << APB_SARADC_ONETIME_ATTEN_S)
+/* --- PINES --- */
+#define PIN_VERDE     3  // Agudos (Tope)
+#define PIN_AMARILLO2 4  // Snare
+#define PIN_AMARILLO1 5  // Medios
+#define PIN_ROJO2     6  // Golpe
+#define PIN_ROJO1     7  // Sub (Base)
+#define PIN_POT       0
 
-#define APB_SARADC_1_DATA_STATUS_REG   (DR_REG_APB_SARADC_BASE + 0x002C) // Resultado ADC1
+// Resolución PWM (Software)
+#define PWM_STEPS 50 
 
-#define APB_SARADC_INT_ENA_REG         (DR_REG_APB_SARADC_BASE + 0x0040) // Enable de flags
-#define APB_SARADC_ADC1_DONE_INT_ENA   BIT(31) // Habilita flag ADC1 done
-#define APB_SARADC_INT_ST_REG          (DR_REG_APB_SARADC_BASE + 0x0048) // Estado de flags
-#define APB_SARADC_ADC1_DONE_INT_ST    BIT(31) // Flag ADC1 conversión terminada
-#define APB_SARADC_INT_CLR_REG         (DR_REG_APB_SARADC_BASE + 0x004C) // Clear de flags
-#define APB_SARADC_ADC1_DONE_INT_CLR   BIT(31) // Limpia flag done
+/* --- VARIABLES GLOBALES DE BRILLO (0 a PWM_STEPS) --- */
+static volatile uint8_t br_rojo1 = 0;
+static volatile uint8_t br_rojo2 = 0;
+static volatile uint8_t br_amarillo1 = 0;
+static volatile uint8_t br_amarillo2 = 0;
+static volatile uint8_t br_verde = 0;
 
-#define LEDC_LSTIMER0_CONF_REG   (DR_REG_LEDC_BASE + 0x00A0)
-#define LEDC_LSTIMER0_PARA_UP    BIT(25)
-#define LEDC_LSTIMER0_RST        BIT(23)
-#define LEDC_LSTIMER0_PAUSE      BIT(22)
-#define LEDC_CLK_DIV_LSTIMER0_M  ((0x0003FFFFU) << 4)
-#define LEDC_CLK_DIV_LSTIMER0_S  4
-#define LEDC_LSTIMER0_DUTY_RES_M ((0xFU) << 0)
-#define LEDC_LSTIMER0_DUTY_RES_S 0
+/* --- FUNCIONES --- */
 
-#define LEDC_CONF_REG            (DR_REG_LEDC_BASE + 0x00D0)
-#define LEDC_CLK_EN              BIT(31)
-#define LEDC_APB_CLK_SEL_M       ((0x3U) << 0)
-#define LEDC_APB_CLK_SEL_S       0
-#define LEDC_APB_CLK_SEL_APB     1U
-
-#define LEDC_LSCH0_CONF0_REG     (DR_REG_LEDC_BASE + 0x0000)
-#define LEDC_PARA_UP_LSCH0       BIT(4)
-#define LEDC_IDLE_LV_LSCH0       BIT(3)
-#define LEDC_SIG_OUT_EN_LSCH0    BIT(2)
-#define LEDC_TIMER_SEL_LSCH0_M   ((0x3U) << 0)
-#define LEDC_TIMER_SEL_LSCH0_S   0
-
-#define LEDC_LSCH0_HPOINT_REG    (DR_REG_LEDC_BASE + 0x0004)
-#define LEDC_LSCH0_DUTY_REG      (DR_REG_LEDC_BASE + 0x0008)
-
-#define LEDC_LSCH0_CONF1_REG     (DR_REG_LEDC_BASE + 0x000C)
-#define LEDC_DUTY_START_LSCH0    BIT(31)
-
-#define GPIO_FUNC3_OUT_SEL_CFG_REG (DR_REG_GPIO_BASE + 0x0560)
-#define GPIO_FUNC3_OEN_INV_SEL      BIT(10)
-#define GPIO_FUNC3_OEN_SEL          BIT(9)
-#define GPIO_FUNC3_OUT_INV_SEL      BIT(8)
-#define GPIO_FUNC3_OUT_SEL_M        ((0xFFU) << 0)
-#define GPIO_FUNC3_OUT_SEL_S        0
-
-#define LEDC_LS_SIG_OUT0_IDX    45U  // Señal PWM canal 0 (low-speed)
-
-#define LED_GPIO        3U
-#define LED2_GPIO       5U
-#define POT_GPIO        0U
-#define LED_MASK        BIT(LED_GPIO)
-#define LED2_MASK       BIT(LED2_GPIO)
-#define POT_MASK        BIT(POT_GPIO)
-
-#define ADC_ATTEN_11DB  3U
-#define ADC_THRESHOLD   2000U
-#define LOOP_DELAY      5000U
-
-#define ADC_ZERO_BIAS   1650U   // Cuentas residuales con cursor a GND (ajustar según hardware)
-
-#define LEDC_PWM_FREQ_HZ       2000ULL
-#define LEDC_TIMER_RES_BITS    10U
-#define LEDC_TIMER_SOURCE_HZ   80000000ULL
-#define LEDC_CLK_DIV_FRAC_BITS 8U
-#define LEDC_TIMER_DIVIDER_NUM (LEDC_TIMER_SOURCE_HZ << LEDC_CLK_DIV_FRAC_BITS)
-#define LEDC_TIMER_DIVIDER_DEN (LEDC_PWM_FREQ_HZ * (1ULL << LEDC_TIMER_RES_BITS))
-#define LEDC_TIMER_DIVIDER ((uint32_t)(LEDC_TIMER_DIVIDER_NUM / LEDC_TIMER_DIVIDER_DEN))
-#define LEDC_DUTY_MAX        ((1U << LEDC_TIMER_RES_BITS) - 1U)
-#define LEDC_DUTY_SHIFT      4U
-
-#if ((LEDC_TIMER_DIVIDER_NUM / LEDC_TIMER_DIVIDER_DEN) == 0) || ((LEDC_TIMER_DIVIDER_NUM / LEDC_TIMER_DIVIDER_DEN) > 0x3FFFFU)
-#error "LEDC_TIMER_DIVIDER fuera de rango para el campo de 18 bits"
-#endif
-
-static void ledc_set_duty(uint32_t duty);
+static void setup_gpio_pin(uint32_t mux_reg, int pin) {
+    uint32_t reg = REG32(mux_reg);
+    reg &= ~(BIT(9)|BIT(8)|BIT(7)); // Limpiar pulls
+    reg &= ~(0x7U << 12);           // Limpiar funcion
+    reg |= (1U << 12);              // Setear Func GPIO
+    REG32(mux_reg) = reg;
+    REG32(GPIO_ENABLE_W1TS_REG) = (1U << pin); // Enable Output
+}
 
 static void gpio_init(void) {
-    // GPIO3 queda como salida controlada por LEDC (sin pulls, función GPIO)
-    uint32_t reg = REG32(IO_MUX_GPIO3_REG);
-    reg &= ~(IO_MUX_FUN_IE | IO_MUX_FUN_PU | IO_MUX_FUN_PD | IO_MUX_MCU_SEL_MASK);
-    reg |= (IO_MUX_MCU_SEL_GPIO << 12);
-    REG32(IO_MUX_GPIO3_REG) = reg;
-    REG32(GPIO_ENABLE_W1TS_REG) = LED_MASK;
+    setup_gpio_pin(IO_MUX_GPIO3_REG, PIN_VERDE);
+    setup_gpio_pin(IO_MUX_GPIO4_REG, PIN_AMARILLO2);
+    setup_gpio_pin(IO_MUX_GPIO5_REG, PIN_AMARILLO1);
+    setup_gpio_pin(IO_MUX_GPIO6_REG, PIN_ROJO2);
+    setup_gpio_pin(IO_MUX_GPIO7_REG, PIN_ROJO1);
 
-    reg = REG32(DR_REG_IO_MUX_BASE + 0x0018);      // IO_MUX_GPIO5_REG (MTDI)
-    reg &= ~(IO_MUX_FUN_IE | IO_MUX_FUN_PU | IO_MUX_FUN_PD | IO_MUX_MCU_SEL_MASK);
-    reg |= (IO_MUX_MCU_SEL_GPIO << 12);
-    REG32(DR_REG_IO_MUX_BASE + 0x0018) = reg;
-    REG32(GPIO_ENABLE_W1TS_REG) = LED2_MASK;
-
-    // GPIO0 en modo analógico (sin OE ni pulls) para el potenciómetro
-    reg = REG32(IO_MUX_GPIO0_REG);
-    reg &= ~(IO_MUX_FUN_IE | IO_MUX_FUN_PU | IO_MUX_FUN_PD | IO_MUX_MCU_SEL_MASK);
+    // Potenciometro Input
+    uint32_t reg = REG32(IO_MUX_GPIO0_REG);
+    reg &= ~(BIT(9)|BIT(8)|BIT(7)); reg |= (1U << 12);
     REG32(IO_MUX_GPIO0_REG) = reg;
-    REG32(GPIO_ENABLE_W1TC_REG) = POT_MASK;
+    REG32(GPIO_ENABLE_W1TC_REG) = BIT(0);
 }
 
 static void adc_init(void) {
-    // Clock/reset del SARADC
     REG32(SYSTEM_PERIP_CLK_EN0_REG) |= SYSTEM_APB_SARADC_CLK_EN;
     REG32(SYSTEM_PERIP_RST_EN0_REG) |= SYSTEM_APB_SARADC_RST;
     REG32(SYSTEM_PERIP_RST_EN0_REG) &= ~SYSTEM_APB_SARADC_RST;
 
-    // Forzar ADC encendido, activar clock y fijar divisor
     uint32_t ctrl = REG32(APB_SARADC_CTRL_REG);
-    ctrl |= APB_SARADC_SAR_CLK_GATED;
-    ctrl &= ~APB_SARADC_XPD_SAR_FORCE_M;
-    ctrl |= (3U << APB_SARADC_XPD_SAR_FORCE_S);
-    ctrl &= ~APB_SARADC_SAR_CLK_DIV_M;
-    ctrl |= (4U << APB_SARADC_SAR_CLK_DIV_S);
-    ctrl &= ~(APB_SARADC_START_FORCE | APB_SARADC_START);
+    ctrl |= (1U << 6); // CLK Gated
+    ctrl &= ~(0x3U << 27); ctrl |= (0x3U << 27); // Force On
+    ctrl &= ~(0xFFU << 7); ctrl |= (4U << 7);    // Div 4
     REG32(APB_SARADC_CTRL_REG) = ctrl;
 
-    // Configurar canal 0 con atenuación 11 dB (full scale ~3.3 V)
     uint32_t sample = REG32(APB_SARADC_ONETIME_SAMPLE_REG);
-    sample |= APB_SARADC1_ONETIME_SAMPLE;
-    sample &= ~APB_SARADC_ONETIME_CHANNEL_M;
-    sample |= (0U << APB_SARADC_ONETIME_CHANNEL_S);
-    sample &= ~APB_SARADC_ONETIME_ATTEN_M;
-    sample |= (ADC_ATTEN_11DB << APB_SARADC_ONETIME_ATTEN_S);
-    sample &= ~APB_SARADC_ONETIME_START;
+    sample |= (1U << 31); // Enable
+    sample &= ~(0xFU << 25); // Ch0
+    sample |= (3U << 23); // 11dB
     REG32(APB_SARADC_ONETIME_SAMPLE_REG) = sample;
 
-    // Habilitar y limpiar flag de conversión terminada
-    REG32(APB_SARADC_INT_ENA_REG) |= APB_SARADC_ADC1_DONE_INT_ENA;
-    REG32(APB_SARADC_INT_CLR_REG) = APB_SARADC_ADC1_DONE_INT_CLR;
-}
-
-static void ledc_init(void) {
-    // Activar clock/reset de LEDC
-    REG32(SYSTEM_PERIP_CLK_EN0_REG) |= SYSTEM_LEDC_CLK_EN;
-    REG32(SYSTEM_PERIP_RST_EN0_REG) |= SYSTEM_LEDC_RST;
-    REG32(SYSTEM_PERIP_RST_EN0_REG) &= ~SYSTEM_LEDC_RST;
-
-    // Seleccionar reloj APB (80 MHz) y habilitar módulo
-    uint32_t ledc_conf = REG32(LEDC_CONF_REG);
-    ledc_conf |= LEDC_CLK_EN;
-    ledc_conf &= ~LEDC_APB_CLK_SEL_M;
-    ledc_conf |= (LEDC_APB_CLK_SEL_APB << LEDC_APB_CLK_SEL_S);
-    REG32(LEDC_CONF_REG) = ledc_conf;
-
-    // Configurar temporizador low-speed 0: resolución y divisor fraccionario (8 bits fracc.)
-    uint32_t timer_conf = REG32(LEDC_LSTIMER0_CONF_REG);
-    timer_conf &= ~(LEDC_CLK_DIV_LSTIMER0_M | LEDC_LSTIMER0_DUTY_RES_M | LEDC_LSTIMER0_PAUSE);
-    timer_conf |= ((LEDC_TIMER_DIVIDER << LEDC_CLK_DIV_LSTIMER0_S) & LEDC_CLK_DIV_LSTIMER0_M);
-    timer_conf |= ((LEDC_TIMER_RES_BITS << LEDC_LSTIMER0_DUTY_RES_S) & LEDC_LSTIMER0_DUTY_RES_M);
-    REG32(LEDC_LSTIMER0_CONF_REG) = timer_conf;
-    REG32(LEDC_LSTIMER0_CONF_REG) |= LEDC_LSTIMER0_RST;
-    REG32(LEDC_LSTIMER0_CONF_REG) &= ~LEDC_LSTIMER0_RST;
-    REG32(LEDC_LSTIMER0_CONF_REG) |= LEDC_LSTIMER0_PARA_UP;
-
-    // Inicializar canal 0: duty 0, usa timer 0, habilita salida
-    REG32(LEDC_LSCH0_HPOINT_REG) = 0;
-    REG32(LEDC_LSCH0_DUTY_REG) = 0;
-    uint32_t ch0_conf0 = REG32(LEDC_LSCH0_CONF0_REG);
-    ch0_conf0 &= ~(LEDC_TIMER_SEL_LSCH0_M | LEDC_IDLE_LV_LSCH0 | LEDC_SIG_OUT_EN_LSCH0);
-    ch0_conf0 |= LEDC_SIG_OUT_EN_LSCH0; // Timer 0 (valor 0)
-    REG32(LEDC_LSCH0_CONF0_REG) = ch0_conf0;
-    REG32(LEDC_LSCH0_CONF0_REG) |= LEDC_PARA_UP_LSCH0;
-    uint32_t ch0_conf1 = REG32(LEDC_LSCH0_CONF1_REG);
-    ch0_conf1 |= LEDC_DUTY_START_LSCH0;
-    REG32(LEDC_LSCH0_CONF1_REG) = ch0_conf1;
-
-    // Conectar señal LEDC canal 0 a GPIO3
-    uint32_t func3 = REG32(GPIO_FUNC3_OUT_SEL_CFG_REG);
-    func3 &= ~(GPIO_FUNC3_OEN_INV_SEL | GPIO_FUNC3_OEN_SEL | GPIO_FUNC3_OUT_INV_SEL | GPIO_FUNC3_OUT_SEL_M);
-    func3 |= (LEDC_LS_SIG_OUT0_IDX << GPIO_FUNC3_OUT_SEL_S) & GPIO_FUNC3_OUT_SEL_M;
-    REG32(GPIO_FUNC3_OUT_SEL_CFG_REG) = func3;
-
-    ledc_set_duty(0);
+    REG32(APB_SARADC_INT_ENA_REG) |= BIT(31);
+    REG32(APB_SARADC_INT_CLR_REG) = BIT(31);
 }
 
 static uint16_t adc_sample_once(void) {
-    // Pulso de start (low→high) para disparar conversión oneshot
     uint32_t sample = REG32(APB_SARADC_ONETIME_SAMPLE_REG);
-    sample &= ~APB_SARADC_ONETIME_START;
-    REG32(APB_SARADC_ONETIME_SAMPLE_REG) = sample;
-    for (volatile uint32_t i = 0; i < 32; ++i) {
-        __asm__ volatile("nop");
-    }
-    sample |= APB_SARADC_ONETIME_START;
-    REG32(APB_SARADC_ONETIME_SAMPLE_REG) = sample;
+    sample &= ~BIT(29); REG32(APB_SARADC_ONETIME_SAMPLE_REG) = sample;
+    for (volatile int i=0; i<32; ++i);
+    sample |= BIT(29); REG32(APB_SARADC_ONETIME_SAMPLE_REG) = sample;
 
-    while ((REG32(APB_SARADC_INT_ST_REG) & APB_SARADC_ADC1_DONE_INT_ST) == 0U) {
-    }
+    while ((REG32(APB_SARADC_INT_ST_REG) & BIT(31)) == 0);
 
-    // Capturo 12 bits útiles y limpio flag
-    uint32_t raw = REG32(APB_SARADC_1_DATA_STATUS_REG) & 0x1FFFFU;
-    REG32(APB_SARADC_INT_CLR_REG) = APB_SARADC_ADC1_DONE_INT_CLR;
-    return (uint16_t)(raw & 0x0FFFU);
+    uint32_t raw = REG32(APB_SARADC_1_DATA_STATUS_REG) & 0xFFFF;
+    REG32(APB_SARADC_INT_CLR_REG) = BIT(31);
+    return (uint16_t)(raw & 0xFFF);
 }
 
-static void short_delay(void) {
-    // Busy-wait simple (no timers configurados)
-    for (volatile uint32_t i = 0; i < LOOP_DELAY; ++i) {
-        __asm__ volatile("nop");
+/*
+ * Función: run_pwm_frame
+ * Ejecuta un ciclo completo de PWM por software.
+ */
+static void run_pwm_frame(int duration_loops) {
+    for (int loop = 0; loop < duration_loops; loop++) {
+        // Un ciclo de PWM (0 a 50)
+        for (int tick = 0; tick < PWM_STEPS; tick++) {
+            uint32_t set_mask = 0;
+            uint32_t clear_mask = 0;
+
+            if (br_rojo1 > tick) set_mask |= (1U << PIN_ROJO1); else clear_mask |= (1U << PIN_ROJO1);
+            if (br_rojo2 > tick) set_mask |= (1U << PIN_ROJO2); else clear_mask |= (1U << PIN_ROJO2);
+            if (br_amarillo1 > tick) set_mask |= (1U << PIN_AMARILLO1); else clear_mask |= (1U << PIN_AMARILLO1);
+            if (br_amarillo2 > tick) set_mask |= (1U << PIN_AMARILLO2); else clear_mask |= (1U << PIN_AMARILLO2);
+            if (br_verde > tick) set_mask |= (1U << PIN_VERDE); else clear_mask |= (1U << PIN_VERDE);
+
+            if (set_mask) REG32(GPIO_OUT_W1TS_REG) = set_mask;
+            if (clear_mask) REG32(GPIO_OUT_W1TC_REG) = clear_mask;
+            
+            for(volatile int d=0; d<20; d++); 
+        }
     }
 }
 
-static void ledc_set_duty(uint32_t duty) {
-    if (duty > LEDC_DUTY_MAX) {
-        duty = LEDC_DUTY_MAX;
+static void startup_animation(void) {
+    // Fade IN
+    for(int b=0; b<=PWM_STEPS; b++) {
+        br_rojo1 = br_rojo2 = br_amarillo1 = br_amarillo2 = br_verde = b;
+        run_pwm_frame(10);
     }
-    REG32(LEDC_LSCH0_DUTY_REG) = duty << LEDC_DUTY_SHIFT;
-    REG32(LEDC_LSCH0_CONF1_REG) |= LEDC_DUTY_START_LSCH0;
-    REG32(LEDC_LSCH0_CONF0_REG) |= LEDC_PARA_UP_LSCH0;
+    // Fade OUT
+    for(int b=PWM_STEPS; b>=0; b--) {
+        br_rojo1 = br_rojo2 = br_amarillo1 = br_amarillo2 = br_verde = b;
+        run_pwm_frame(10);
+    }
+    br_rojo1 = br_rojo2 = br_amarillo1 = br_amarillo2 = br_verde = 0;
+    run_pwm_frame(10);
+}
+
+// Función auxiliar para calcular brillo en cascada
+// input: valor ADC, offset: donde empieza a brillar
+int calc_brightness(int32_t input, int32_t offset) {
+    int32_t val = input - offset;
+    if (val < 0) return 0;
+    
+    // Escalamos 500 puntos de ADC a 50 pasos de PWM
+    // (val * 50) / 500  => val / 10
+    int32_t b = val / 10;
+    
+    if (b > PWM_STEPS) return PWM_STEPS;
+    return b;
 }
 
 int main(void) {
-    // Deshabilitar watchdogs para bucle infinito didáctico
     disable_timg_wdt(TIMG0_BASE);
     disable_timg_wdt(TIMG1_BASE);
     disable_rtc_wdts();
 
-    // Inicializaciones básicas de GPIO, ADC y PWM
     gpio_init();
     adc_init();
-    ledc_init();
 
-    // Loop principal: LED rojo por umbral digital, LED azul via PWM proporcional
+    startup_animation();
+
     while (1) {
-        uint16_t sample = adc_sample_once();
-        if (sample >= ADC_THRESHOLD) {
-            REG32(GPIO_OUT_W1TS_REG) = LED2_MASK;
-        } else {
-            REG32(GPIO_OUT_W1TC_REG) = LED2_MASK;
-        }
+        // 1. LEER ADC
+        uint16_t raw_val = adc_sample_once();
 
-        uint32_t pwm_input = (sample > ADC_ZERO_BIAS) ? (sample - ADC_ZERO_BIAS) : 0U;
-        uint32_t pwm_range = 4095U - ADC_ZERO_BIAS;
-        uint32_t duty = (pwm_input * LEDC_DUTY_MAX) / pwm_range;
-        ledc_set_duty(duty);
+        // 2. CALCULAR CASCADA (RE-CALIBRADO)
+        // Distribución pareja de 500 puntos por LED
+        // El verde empieza en 3600 para tener espacio de llegar al maximo (4095)
+        
+        int32_t val = (int32_t)raw_val;
 
-        short_delay();
+        br_rojo1     = calc_brightness(val, 1600); // Base
+        br_rojo2     = calc_brightness(val, 2100); 
+        br_amarillo1 = calc_brightness(val, 2600); 
+        br_amarillo2 = calc_brightness(val, 3100); 
+        br_verde     = calc_brightness(val, 3600); // Tope
+
+        // 3. DIBUJAR CUADRO
+        // Ejecutamos PWM ~20ms para que se vea estable
+        run_pwm_frame(100); 
     }
 }
