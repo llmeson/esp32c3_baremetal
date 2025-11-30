@@ -5,53 +5,67 @@ Memory Configuration
 
 Name             Origin             Length             Attributes
 IROM             0x42000000         0x00200000         xr
-DRAM             0x3fc80000         0x00064000         xrw
+DROM             0x3c000000         0x00080000         xr
+DRAM             0x3fc80000         0x00060000         xrw
 *default*        0x00000000         0xffffffff
 
 Linker script and memory map
 
 LOAD build/startup.o
 LOAD build/main.o
-                0x3fce4000                        PROVIDE (_stack_top = (ORIGIN (DRAM) + LENGTH (DRAM)))
+                0x3fce0000                        PROVIDE (_stack_top = (ORIGIN (DRAM) + LENGTH (DRAM)))
 
-.text           0x42000000       0x98
+.text           0x42000000      0x368
                 0x42000000                        _stext = .
  *(.init)
  .init          0x42000000       0x5e build/startup.o
                 0x42000000                _start
- *(.text*)
+ *(.text .text.*)
  .text          0x4200005e        0x0 build/startup.o
  .text          0x4200005e        0x0 build/main.o
- .text.startup  0x4200005e       0x38 build/main.o
+ .text.startup  0x4200005e      0x30a build/main.o
                 0x4200005e                main
- *(.rodata*)
-                0x42000098                        . = ALIGN (0x4)
- *fill*         0x42000096        0x2 
-                0x42000098                        _etext = .
+ *(.gnu.linkonce.t.*)
+                0x42000368                        . = ALIGN (0x4)
+ *fill*         0x42000368        0x0 
+                0x42000368                        _etext = .
 
-.rela.dyn       0x42000098        0x0
- .rela.init     0x42000098        0x0 build/startup.o
+.rodata         0x3c000000       0x18 load address 0x42000368
+                0x3c000000                        . = ALIGN (0x4)
+                0x3c000000                        _srodata = .
+ *(.rodata .rodata.*)
+ .rodata        0x3c000000       0x18 build/main.o
+ *(.srodata .srodata.*)
+ *(.gnu.linkonce.r.*)
+                0x3c000018                        . = ALIGN (0x4)
+                0x3c000018                        _erodata = .
 
-.data           0x3fc80000        0x0 load address 0x42000098
+.rela.dyn       0x3c000018        0x0 load address 0x42000380
+ .rela.init     0x3c000018        0x0 build/startup.o
+
+.data           0x3fc80000        0x0 load address 0x42000380
                 0x3fc80000                        . = ALIGN (0x4)
                 0x3fc80000                        _sdata = .
- *(.data*)
+ *(.data .data.*)
  .data          0x3fc80000        0x0 build/startup.o
  .data          0x3fc80000        0x0 build/main.o
+ *(.sdata .sdata.*)
                 0x3fc80000                        . = ALIGN (0x4)
                 0x3fc80000                        _edata = .
+                0x42000380                        PROVIDE (_sidata = LOADADDR (.data))
 
-.bss            0x3fc80000        0x0 load address 0x42000098
+.bss            0x3fc80000       0x40 load address 0x42000380
                 0x3fc80000                        . = ALIGN (0x8)
                 0x3fc80000                        _sbss = .
- *(.bss*)
+ *(.bss .bss.*)
  .bss           0x3fc80000        0x0 build/startup.o
  .bss           0x3fc80000        0x0 build/main.o
+ *(.sbss .sbss.*)
  *(COMMON)
-                0x3fc80000                        . = ALIGN (0x8)
-                0x3fc80000                        _ebss = .
-                0x3fc80000                        _sheap = _ebss
-                0x3fce2000                        _eheap = (_stack_top - 0x2000)
+                0x3fc80000                        . = ALIGN (0x10)
+                0x3fc80040                        . = (. + 0x40)
+ *fill*         0x3fc80000       0x40 
+                0x3fc80040                        _ebss = .
 OUTPUT(build/app.elf elf32-littleriscv)
 
 .riscv.attributes

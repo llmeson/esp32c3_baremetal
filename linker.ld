@@ -1,71 +1,83 @@
-/*
- * linker.ld - Script de enlace mínimo para ESP32-C3 (versión didáctica)
- * ---------------------------------------------------------------
- * OBJETIVO PEDAGÓGICO:
- *  - Mostrar explícitamente cómo el enlazador coloca secciones en memoria.
- *  - Diferenciar entre FLASH mapeada (XIP) y RAM para datos.
- *  - Exponer símbolos que el startup usa para copiar/limpiar secciones.
- *
- * NOTAS:
- *  - El ESP32-C3 ejecuta código en flash mapeada (XIP) a través de la región 0x4200_0000.
- *  - La memoria DRAM principal accesible a la CPU comienza en 0x3FC8_0000.
- *  - LENGTH aquí es una simplificación (no todo el espacio está siempre disponible, pero para un ejemplo pequeño basta).
- *  - No incluimos particiones, bootloader ni secciones avanzadas (vector interrupciones separado, etc.).
- *
- * SÍMBOLOS EXPUESTOS:
- *  _stext/_etext : Delimitan el bloque de código (.text + .rodata) que queda en FLASH.
- *  _sdata/_edata : Datos inicializados que se COPIAN desde FLASH a RAM al arranque.
- *  _sbss/_ebss   : Zona BSS que se pone a cero en startup.
- *  _stack_top    : Dirección usada para inicializar el stack pointer (SP).
- *  _sheap/_eheap : Marcadores pedagógicos de un posible heap (no usado aún).
- */
+/* linker.ld — ESP32-C3 didáctico (fix .srodata/.sdata/.sbss) */
 
 ENTRY(_start)
 
 MEMORY
 {
-  /* Región de FLASH mapeada a la ventana ejecutable (XIP). Código y rodata permanecen aquí. */
+  /* Código XIP */
   IROM (rx)  : ORIGIN = 0x42000000, LENGTH = 2M
-  /* Región de DRAM: almacenará .data copiada, .bss y la pila (stack). */
-  DRAM (rwx) : ORIGIN = 0x3FC80000, LENGTH = 400K
+  /* Constantes XIP por bus de datos */
+  DROM (rx)  : ORIGIN = 0x3C000000, LENGTH = 512K
+  /* DRAM interna */
+  DRAM (rwx) : ORIGIN = 0x3FC80000, LENGTH = 0x00060000  /* hasta 0x3FCE0000 (fix stack guard) */
 }
 
-/* Externally visible symbols */
+/* Tope de pila (lo publicamos igual que antes) */
 PROVIDE(_stack_top = ORIGIN(DRAM) + LENGTH(DRAM));
 
 SECTIONS
 {
-  /* Sección .text: código ejecutable + .rodata permanecen en FLASH (IROM). */
-  .text : {
-    _stext = .;              /* Marca inicio del bloque de código/rodata */
-    *(.init)                 /* Código de inicio (startup) */
-    *(.text*)                /* Código C/asm */
-    *(.rodata*)              /* Datos de solo lectura (const) */
+  /* --- Código/funciones en flash ejecutable --- */
+  .text :
+  {
+    _stext = .;
+    *(.init)
+    *(.text .text.*)
+    *(.gnu.linkonce.t.*)
     . = ALIGN(4);
-    _etext = .;              /* Fin de la porción que permanece en FLASH */
+    _etext = .;
   } > IROM
 
-  /* Sección .data: datos inicializados que deben terminar en RAM.
-   * AT(...) indica su LOAD ADDRESS en FLASH (justo tras .text) para ser copiados. */
-  .data : AT (LOADADDR(.text) + SIZEOF(.text)) {
+  /* --- Constantes en DROM (incluye .srodata) --- */
+  .rodata : AT (LOADADDR(.text) + SIZEOF(.text))
+  {
     . = ALIGN(4);
-    _sdata = .;              /* Inicio de .data en RAM */
-    *(.data*)
+    _srodata = .;
+    *(.rodata .rodata.*)
+    *(.srodata .srodata.*)
+    *(.gnu.linkonce.r.*)
     . = ALIGN(4);
-    _edata = .;              /* Fin de .data */
-  } > DRAM
+    _erodata = .;
+  } > DROM
 
-  /* Sección .bss: variables globales no inicializadas -> se llenan con cero en runtime. */
-  .bss (NOLOAD) : {
+  /* --- Datos inicializados en DRAM (incluye .sdata) --- */
+  .data : AT (LOADADDR(.rodata) + SIZEOF(.rodata))
+  {
+    . = ALIGN(4);
+    _sdata = .;
+    *(.data .data.*)
+    *(.sdata .sdata.*)
+    . = ALIGN(4);
+    _edata = .;
+  } > DRAM
+  /* Dirección de carga en flash de .data (la usa tu startup) */
+  PROVIDE(_sidata = LOADADDR(.data));
+
+  /* --- BSS en DRAM (incluye .sbss y COMMON) --- */
+  .bss (NOLOAD) :
+  {
     . = ALIGN(8);
-    _sbss = .;               /* Inicio de .bss */
-    *(.bss*)
+    _sbss = .;
+    *(.bss .bss.*)
+    *(.sbss .sbss.*)
     *(COMMON)
-    . = ALIGN(8);
-    _ebss = .;               /* Fin de .bss */
+    . = ALIGN(16);
+    /* Guard pedagógico para evitar off-by-one en limpiado */
+    . += 64;
+    _ebss = .;
   } > DRAM
 
-  /* Marcadores de heap simple (no implementado). Dejamos 0x2000 (~8KB) para stack. */
-  _sheap = _ebss;
-  _eheap = _stack_top - 0x2000; /* Reservar espacio para la pila (simplificación). */
+  /* --- Opcional: reservar pila dentro de DRAM (sugerido) ---
+     Si querés pila explícita y símbolo fuerte __stack_top, descomentá:
+
+  .stack (NOLOAD) :
+  {
+    . = ALIGN(16);
+    __stack_bottom = .;
+    . += 16K;
+    __stack_top = .;
+  } > DRAM
+  PROVIDE(_stack_top = __stack_top);
+
+  */
 }
