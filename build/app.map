@@ -15,36 +15,40 @@ LOAD build/startup.o
 LOAD build/main.o
                 0x3fce0000                        PROVIDE (_stack_top = (ORIGIN (DRAM) + LENGTH (DRAM)))
 
-.text           0x42000000      0x40c
+.text           0x42000000      0x5d0
                 0x42000000                        _stext = .
  *(.init)
  .init          0x42000000       0x5e build/startup.o
                 0x42000000                _start
  *(.text .text.*)
  .text          0x4200005e        0x0 build/startup.o
- .text          0x4200005e       0xf4 build/main.o
-                0x42000132                calc_brightness
- .text.startup  0x42000152      0x2b8 build/main.o
-                0x42000152                main
+ .text          0x4200005e      0x2b2 build/main.o
+                0x42000160                compute_fft
+                0x42000284                magnitude
+                0x420002ce                update_smooth_led
+                0x420002f0                apply_manual_threshold
+ .text.startup  0x42000310      0x2be build/main.o
+                0x42000310                main
  *(.gnu.linkonce.t.*)
-                0x4200040c                        . = ALIGN (0x4)
- *fill*         0x4200040a        0x2 
-                0x4200040c                        _etext = .
+                0x420005d0                        . = ALIGN (0x4)
+ *fill*         0x420005ce        0x2 
+                0x420005d0                        _etext = .
 
-.rodata         0x3c000000       0x18 load address 0x4200040c
+.rodata         0x3c000000       0x58 load address 0x420005d0
                 0x3c000000                        . = ALIGN (0x4)
                 0x3c000000                        _srodata = .
  *(.rodata .rodata.*)
- .rodata        0x3c000000       0x18 build/main.o
+ .rodata        0x3c000000       0x58 build/main.o
+                0x3c000000                sin_table
  *(.srodata .srodata.*)
  *(.gnu.linkonce.r.*)
-                0x3c000018                        . = ALIGN (0x4)
-                0x3c000018                        _erodata = .
+                0x3c000058                        . = ALIGN (0x4)
+                0x3c000058                        _erodata = .
 
-.rela.dyn       0x3c000018        0x0 load address 0x42000424
- .rela.init     0x3c000018        0x0 build/startup.o
+.rela.dyn       0x3c000058        0x0 load address 0x42000628
+ .rela.init     0x3c000058        0x0 build/startup.o
 
-.data           0x3fc80000        0x0 load address 0x42000424
+.data           0x3fc80000        0x0 load address 0x42000628
                 0x3fc80000                        . = ALIGN (0x4)
                 0x3fc80000                        _sdata = .
  *(.data .data.*)
@@ -53,30 +57,32 @@ LOAD build/main.o
  *(.sdata .sdata.*)
                 0x3fc80000                        . = ALIGN (0x4)
                 0x3fc80000                        _edata = .
-                0x42000424                        PROVIDE (_sidata = LOADADDR (.data))
+                0x42000628                        PROVIDE (_sidata = LOADADDR (.data))
 
-.bss            0x3fc80000       0x50 load address 0x42000424
+.bss            0x3fc80000      0x150 load address 0x42000628
                 0x3fc80000                        . = ALIGN (0x8)
                 0x3fc80000                        _sbss = .
  *(.bss .bss.*)
  .bss           0x3fc80000        0x0 build/startup.o
- .bss           0x3fc80000        0x0 build/main.o
+ .bss           0x3fc80000      0x100 build/main.o
+                0x3fc80000                fr
+                0x3fc80080                fi
  *(.sbss .sbss.*)
- .sbss          0x3fc80000        0x5 build/main.o
+ .sbss          0x3fc80100        0x5 build/main.o
  *(COMMON)
-                0x3fc80010                        . = ALIGN (0x10)
- *fill*         0x3fc80005        0xb 
-                0x3fc80050                        . = (. + 0x40)
- *fill*         0x3fc80010       0x40 
-                0x3fc80050                        _ebss = .
+                0x3fc80110                        . = ALIGN (0x10)
+ *fill*         0x3fc80105        0xb 
+                0x3fc80150                        . = (. + 0x40)
+ *fill*         0x3fc80110       0x40 
+                0x3fc80150                        _ebss = .
 OUTPUT(build/app.elf elf32-littleriscv)
 
 .riscv.attributes
-                0x00000000       0x36
+                0x00000000       0x3f
  .riscv.attributes
-                0x00000000       0x34 build/startup.o
+                0x00000000       0x3d build/startup.o
  .riscv.attributes
-                0x00000034       0x36 build/main.o
+                0x0000003d       0x3f build/main.o
 
 .comment        0x00000000       0x2f
  .comment       0x00000000       0x2f build/main.o

@@ -29,7 +29,9 @@ OBJCOPY := riscv32-esp-elf-objcopy  # Conversión de formatos (ELF -> binario pl
 OBJDUMP := riscv32-esp-elf-objdump  # Desensamblado para análisis didáctico
 SIZE    := riscv32-esp-elf-size     # Resumen de tamaños de secciones
 
-CFLAGS  := -Os -march=rv32imc -mabi=ilp32 -ffreestanding -nostdlib -Wall -Wextra -Iinclude
+# CORRECCIÓN AQUÍ: Se agregó '_zicsr' al final de -march para soportar instrucciones CSR
+CFLAGS  := -Os -march=rv32imc_zicsr -mabi=ilp32 -ffreestanding -nostdlib -Wall -Wextra -Iinclude
+
 ## -Os: optimización para tamaño. -ffreestanding: entorno sin librería estándar.
 ## -nostdlib/-nostartfiles (en LDFLAGS) impide que el enlazador agregue crt0 y stdlib.
 LDFLAGS := -T $(LINKER) -nostdlib -nostartfiles -Wl,-Map=$(BUILD_DIR)/$(TARGET).map
