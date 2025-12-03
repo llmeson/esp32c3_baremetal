@@ -1,28 +1,27 @@
 /*
  * ======================================================================================
- * PROYECTO: ESP32-C3 BARE-METAL AUDIO VISUALIZER (FINAL TUNED)
+ * PROYECTO: ESP32-C3 BARE-METAL AUDIO VISUALIZER (GOLDEN MASTER)
  * ======================================================================================
- * --- MAPA DE CONEXIONES (HARDWARE) ---
- * [SALIDAS - LEDs]
- * - VERDE (Agudos/Brillos)    ---> GPIO 3
- * - AMARILLO 2 (Redoblante)   ---> GPIO 4
- * - AMARILLO 1 (Voces/Medios) ---> GPIO 5
- * - ROJO 2 (Bajos/Cuerpo)     ---> GPIO 6
- * - ROJO 1 (Bombo/Golpe)      ---> GPIO 7
- * (Todas las salidas LED llevan resistencia limitadora, ej. 220ohm o 330ohm)
- * * [ENTRADAS - ANALÓGICAS]
- * - POTENCIÓMETRO (Umbral)    ---> GPIO 1
- * - Patas extremas: 3.3V y GND
- * - Pata central (Wiper): GPIO 1
- * * - MICRÓFONO (MAX4466)       ---> GPIO 0
- * - VCC: 3.3V
- * - GND: GND
- * - OUT: GPIO 0
+ * * [ MAPA DE CONEXIONES DE HARDWARE ]
+ * * ESP32-C3         PERIFÉRICO             FUNCIÓN
+ * -----------------------------------------------------------
+ * GPIO 0     <---  Micrófono (MAX4466)    Entrada Audio (OUT)
+ * GPIO 1     <---  Potenciómetro          Ajuste Umbral (Wiper)
+ * * GPIO 7     --->  Triac / LED Rojo 1     BOMBO (Golpe)
+ * GPIO 6     --->  Triac / LED Rojo 2     BAJOS (Cuerpo)
+ * GPIO 5     --->  Triac / LED Amar 1     MEDIOS (Voces)
+ * GPIO 4     --->  Triac / LED Amar 2     SNARE (Ritmo)
+ * GPIO 3     --->  Triac / LED Verde      AGUDOS (Platillos)
  * ======================================================================================
  */
 
 #include <stdint.h>
 #include "WDT_FEED.h"
+
+/* --- CONFIGURACIÓN DE HARDWARE --- */
+// 0 = MODO LED (PWM Rápido, 0-100%)
+// 1 = MODO TRIAC 220V (PWM Lento para AC, Pre-heat 30-100%)
+#define MODO_LAMPARA  0 
 
 /* --- REGISTROS --- */
 #define BIT(n) (1U << (n))
@@ -39,8 +38,8 @@
 #define GPIO_ENABLE_W1TS_REG    (DR_REG_GPIO_BASE + 0x0024)
 
 // IO MUX
-#define IO_MUX_GPIO0_REG        (DR_REG_IO_MUX_BASE + 0x0004) // MIC
-#define IO_MUX_GPIO1_REG        (DR_REG_IO_MUX_BASE + 0x0008) // POT
+#define IO_MUX_GPIO0_REG        (DR_REG_IO_MUX_BASE + 0x0004) 
+#define IO_MUX_GPIO1_REG        (DR_REG_IO_MUX_BASE + 0x0008) 
 #define IO_MUX_GPIO3_REG        (DR_REG_IO_MUX_BASE + 0x0010)
 #define IO_MUX_GPIO4_REG        (DR_REG_IO_MUX_BASE + 0x0014)
 #define IO_MUX_GPIO5_REG        (DR_REG_IO_MUX_BASE + 0x0018)
@@ -67,6 +66,9 @@
 #define PIN_ROJO2     6
 #define PIN_ROJO1     7
 
+// Máscara combinada para eficiencia
+#define LEDS_MASK     ((1U<<PIN_VERDE)|(1U<<PIN_AMARILLO2)|(1U<<PIN_AMARILLO1)|(1U<<PIN_ROJO2)|(1U<<PIN_ROJO1))
+
 #define ADC_CH_MIC    0 
 #define ADC_CH_POT    1 
 #define PWM_STEPS     50
@@ -75,11 +77,20 @@
 #define N_SAMPLES 64
 #define LOG2_N    6
 
+/* Tabla Seno */
 const int8_t sin_table[N_SAMPLES] = {
     0, 12, 25, 38, 49, 60, 71, 81, 90, 98, 106, 112, 117, 122, 125, 127,
     127, 127, 125, 122, 117, 112, 106, 98, 90, 81, 71, 60, 49, 38, 25, 12,
     0, -12, -25, -38, -49, -60, -71, -81, -90, -98, -106, -112, -117, -122, -125, -127,
     -127, -127, -125, -122, -117, -112, -106, -98, -90, -81, -71, -60, -49, -38, -25, -12
+};
+
+/* Tabla Hann */
+const uint8_t hann_window[N_SAMPLES] = {
+    0, 0, 1, 3, 6, 10, 15, 20, 26, 33, 41, 49, 57, 66, 75, 84,
+    94, 103, 112, 121, 130, 139, 147, 155, 163, 170, 177, 184, 190, 196, 201, 205,
+    209, 212, 215, 217, 218, 218, 217, 215, 212, 209, 205, 201, 196, 190, 184, 177,
+    170, 163, 155, 147, 139, 130, 121, 112, 103, 94, 84, 75, 66, 57, 49, 41
 };
 
 int16_t fr[N_SAMPLES];
@@ -184,13 +195,38 @@ int16_t magnitude(int i) {
     return (r > img) ? (r + (img>>1)) : (img + (r>>1));
 }
 
+// UPDATE CON PRE-HEAT (30%) AUTOMÁTICO
 void update_smooth_led(uint8_t *curr, int target) {
+    int min_val = 0;
+    
+    // Si estamos en MODO_LAMPARA, el piso sube a 15 (Pre-Heat)
+    if (MODO_LAMPARA) {
+        min_val = 15;
+        // Escalamos el rango musical para que opere entre 15 y 50
+        if (target > 0) {
+            int range = PWM_STEPS - min_val;
+            target = min_val + ((target * range) / PWM_STEPS);
+        } else {
+            target = min_val;
+        }
+    }
+
     if (target > PWM_STEPS) target = PWM_STEPS;
-    if (target > *curr) *curr = target;
-    else if (*curr > 0) *curr -= 1;
+    
+    // Smoothing
+    if (target > *curr) {
+        *curr = target; // Ataque rápido
+    } else if (*curr > min_val) {
+        *curr -= 1;     // Decay lento
+    }
 }
 
 static void run_pwm_frame(void) {
+    // AJUSTE DE VELOCIDAD AUTOMÁTICO
+    // - LEDs: Delay corto (25) -> Alta frecuencia, sin parpadeo.
+    // - TRIACS: Delay largo (120) -> Baja frecuencia, permite que el Triac dispare.
+    int delay_ticks = (MODO_LAMPARA) ? 120 : 25; 
+
     for (int t = 0; t < PWM_STEPS; t++) {
         uint32_t s = 0;
         if (curr_rojo1 > t) s |= (1U<<PIN_ROJO1);
@@ -200,8 +236,10 @@ static void run_pwm_frame(void) {
         if (curr_verde > t) s |= (1U<<PIN_VERDE);
         
         REG32(GPIO_OUT_W1TS_REG) = s;
-        REG32(GPIO_OUT_W1TC_REG) = (~s) & ((1U<<3)|(1U<<4)|(1U<<5)|(1U<<6)|(1U<<7));
-        for(volatile int d=0; d<25; d++);
+        REG32(GPIO_OUT_W1TC_REG) = (~s) & LEDS_MASK;
+        
+        // Usamos la variable delay_ticks para controlar la velocidad
+        for(volatile int d=0; d<delay_ticks; d++);
     }
 }
 
@@ -237,34 +275,29 @@ int main(void) {
         block_avg /= N_SAMPLES;
         
         for(int i=0; i<N_SAMPLES; i++) {
-            fr[i] -= block_avg;
+            int32_t val = fr[i] - block_avg;
+            fr[i] = (int16_t)((val * hann_window[i]) >> 8);
         }
 
         compute_fft();
 
-        /* --- CROSSOVER AJUSTADO --- */
+        /* --- CROSSOVER TUNED --- */
+        #define NOISE_GATE 4 
         
-        // 1. ROJO 1 (BOMBO): CORRECCIÓN
-        // Quitamos el bin 3 (ruido ambiente) y bajamos ganancia de x2.5 a x1.5
-        // Ahora solo suma bins 4 y 5.
         int b1 = magnitude(4) + magnitude(5); 
-        b1 = (b1 * 15) / 10; // Gain x1.5 (Menos agresivo para que no quede fijo)
+        if(b1 < NOISE_GATE) b1 = 0; else b1 = (b1 * 12) / 10; // Bombo
 
-        // 2. ROJO 2 (BAJOS):
         int b2 = magnitude(6) + magnitude(7);
-        b2 = (b2 * 12) / 10; // Gain x1.2
+        if(b2 < NOISE_GATE) b2 = 0; else b2 = (b2 * 18) / 10; // Bajos
 
-        // 3. AMARILLO 1 (MEDIOS):
         int b3 = magnitude(9) + magnitude(11) + magnitude(13);
-        b3 = (b3 * 8) / 10;  // Gain x0.8
+        if(b3 < NOISE_GATE) b3 = 0; else b3 = (b3 * 14) / 10; // Medios
 
-        // 4. AMARILLO 2 (SNARE):
         int b4 = magnitude(16) + magnitude(19); 
-        b4 = (b4 * 20) / 10; // Gain x2.0
+        if(b4 < NOISE_GATE) b4 = 0; else b4 = (b4 * 28) / 10; // Snare
 
-        // 5. VERDE (PLATILLOS):
         int b5 = magnitude(23) + magnitude(28); 
-        b5 = (b5 * 40) / 10; // Gain x4.0
+        if(b5 < NOISE_GATE) b5 = 0; else b5 = (b5 * 20) / 10; // Agudos
 
         update_smooth_led(&curr_rojo1,     apply_manual_threshold(b1, threshold));
         update_smooth_led(&curr_rojo2,     apply_manual_threshold(b2, threshold));
