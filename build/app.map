@@ -15,25 +15,24 @@ LOAD build/startup.o
 LOAD build/main.o
                 0x3fce0000                        PROVIDE (_stack_top = (ORIGIN (DRAM) + LENGTH (DRAM)))
 
-.text           0x42000000      0x61c
+.text           0x42000000      0x5f8
                 0x42000000                        _stext = .
  *(.init)
  .init          0x42000000       0x5e build/startup.o
                 0x42000000                _start
  *(.text .text.*)
  .text          0x4200005e        0x0 build/startup.o
- .text          0x4200005e      0x2b2 build/main.o
-                0x42000160                compute_fft
-                0x42000284                magnitude
-                0x420002ce                update_smooth_led
-                0x420002f0                apply_manual_threshold
- .text.startup  0x42000310      0x30c build/main.o
-                0x42000310                main
+ .text          0x4200005e      0x252 build/main.o
+                0x42000142                compute_fft
+                0x42000266                magnitude
+ .text.startup  0x420002b0      0x346 build/main.o
+                0x420002b0                main
  *(.gnu.linkonce.t.*)
-                0x4200061c                        . = ALIGN (0x4)
-                0x4200061c                        _etext = .
+                0x420005f8                        . = ALIGN (0x4)
+ *fill*         0x420005f6        0x2 
+                0x420005f8                        _etext = .
 
-.rodata         0x3c000000       0x98 load address 0x4200061c
+.rodata         0x3c000000       0x98 load address 0x420005f8
                 0x3c000000                        . = ALIGN (0x4)
                 0x3c000000                        _srodata = .
  *(.rodata .rodata.*)
@@ -45,10 +44,10 @@ LOAD build/main.o
                 0x3c000098                        . = ALIGN (0x4)
                 0x3c000098                        _erodata = .
 
-.rela.dyn       0x3c000098        0x0 load address 0x420006b4
+.rela.dyn       0x3c000098        0x0 load address 0x42000690
  .rela.init     0x3c000098        0x0 build/startup.o
 
-.data           0x3fc80000        0x0 load address 0x420006b4
+.data           0x3fc80000        0x0 load address 0x42000690
                 0x3fc80000                        . = ALIGN (0x4)
                 0x3fc80000                        _sdata = .
  *(.data .data.*)
@@ -57,9 +56,9 @@ LOAD build/main.o
  *(.sdata .sdata.*)
                 0x3fc80000                        . = ALIGN (0x4)
                 0x3fc80000                        _edata = .
-                0x420006b4                        PROVIDE (_sidata = LOADADDR (.data))
+                0x42000690                        PROVIDE (_sidata = LOADADDR (.data))
 
-.bss            0x3fc80000      0x150 load address 0x420006b4
+.bss            0x3fc80000      0x140 load address 0x42000690
                 0x3fc80000                        . = ALIGN (0x8)
                 0x3fc80000                        _sbss = .
  *(.bss .bss.*)
@@ -68,13 +67,11 @@ LOAD build/main.o
                 0x3fc80000                fr
                 0x3fc80080                fi
  *(.sbss .sbss.*)
- .sbss          0x3fc80100        0x5 build/main.o
  *(COMMON)
-                0x3fc80110                        . = ALIGN (0x10)
- *fill*         0x3fc80105        0xb 
-                0x3fc80150                        . = (. + 0x40)
- *fill*         0x3fc80110       0x40 
-                0x3fc80150                        _ebss = .
+                0x3fc80100                        . = ALIGN (0x10)
+                0x3fc80140                        . = (. + 0x40)
+ *fill*         0x3fc80100       0x40 
+                0x3fc80140                        _ebss = .
 OUTPUT(build/app.elf elf32-littleriscv)
 
 .riscv.attributes
